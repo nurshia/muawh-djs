@@ -411,6 +411,25 @@ class Guild extends AnonymousGuild {
       for (const role of data.roles) this.roles._add(role);
     }
 
+    // [muawh] Voice states are patched BEFORE members, not after.
+    //
+    // A member cache policy (ClientOptions#makeCache -> keepOverLimit) is the
+    // only way to keep this cache bounded, and the most common policy keeps
+    // members who are connected to voice. That predicate reads
+    // `member.voice`, which resolves through this very cache -- so with the
+    // upstream order it is always empty while members are being added, and
+    // everyone already sitting in a voice channel when the guild arrives gets
+    // dropped. `voiceChannel.members` then reports those channels as empty.
+    //
+    // `VoiceStateManager#_add` does not touch the member cache, so moving the
+    // block up has no other effect.
+    if (data.voice_states) {
+      this.voiceStates.cache.clear();
+      for (const voiceState of data.voice_states) {
+        this.voiceStates._add(voiceState);
+      }
+    }
+
     if (data.members) {
       this.members.cache.clear();
       for (const guildUser of data.members) this.members._add(guildUser);
@@ -441,13 +460,6 @@ class Guild extends AnonymousGuild {
       this.scheduledEvents.cache.clear();
       for (const scheduledEvent of data.guild_scheduled_events) {
         this.scheduledEvents._add(scheduledEvent);
-      }
-    }
-
-    if (data.voice_states) {
-      this.voiceStates.cache.clear();
-      for (const voiceState of data.voice_states) {
-        this.voiceStates._add(voiceState);
       }
     }
 

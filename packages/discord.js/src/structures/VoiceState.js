@@ -21,6 +21,21 @@ class VoiceState extends Base {
      * @type {Snowflake}
      */
     this.id = data.user_id;
+
+    /**
+     * [muawh] The member instance built from this voice state's own payload.
+     *
+     * Voice state events carry the member object. Upstream adds it to the
+     * guild member cache and the `member` getter then re-resolves it through
+     * that cache, so the payload data is lost whenever the cache declines to
+     * store it. Keeping the reference here makes `voiceState.member` — and
+     * therefore `voiceChannel.members`, which is built from it — work without
+     * a member cache.
+     * @type {?GuildMember}
+     * @private
+     */
+    this._member = null;
+
     this._patch(data);
   }
 
@@ -127,6 +142,12 @@ class VoiceState extends Base {
       this.requestToSpeakTimestamp ??= null;
     }
 
+    // [muawh] Keep the instance `_add` returns: it hands back a usable
+    // GuildMember even when the cache refuses to store it.
+    if (data.member?.user && data.member.joined_at) {
+      this._member = this.guild.members._add(data.member);
+    }
+
     return this;
   }
 
@@ -136,7 +157,10 @@ class VoiceState extends Base {
    * @readonly
    */
   get member() {
-    return this.guild.members.cache.get(this.id) ?? null;
+    // [muawh] The cache is checked first so behaviour is identical to
+    // upstream whenever the member is cached; the payload-built instance is
+    // only a fallback for when it is not.
+    return this.guild.members.cache.get(this.id) ?? this._member ?? null;
   }
 
   /**
