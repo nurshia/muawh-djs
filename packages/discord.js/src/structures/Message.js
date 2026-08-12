@@ -50,6 +50,19 @@ class Message extends Base {
      */
     this.guildId = data.guild_id ?? this.channel?.guild?.id ?? null;
 
+    /**
+     * [muawh] The member instance built from this message's own payload.
+     *
+     * Gateway message events always carry the author's member object. Upstream
+     * adds it to the guild member cache and then re-resolves it through that
+     * cache in the `member` getter, so the payload data is lost whenever the
+     * cache declines to store it (member cache policy, sweeper, size limit).
+     * Keeping the reference here makes the getter work without a member cache.
+     * @type {?GuildMember}
+     * @private
+     */
+    this._member = null;
+
     this._patch(data);
   }
 
@@ -339,7 +352,9 @@ class Message extends Base {
     if (this.member && data.member) {
       this.member._patch(data.member);
     } else if (data.member && this.guild && this.author) {
-      this.guild.members._add(Object.assign(data.member, { user: this.author }));
+      // [muawh] Keep the returned instance: `_add` hands back a usable
+      // GuildMember even when the cache refuses to store it.
+      this._member = this.guild.members._add(Object.assign(data.member, { user: this.author }));
     }
 
     if ('flags' in data) {
@@ -556,7 +571,10 @@ class Message extends Base {
    * @readonly
    */
   get member() {
-    return this.guild?.members.resolve(this.author) ?? null;
+    // [muawh] The cache is checked first so behaviour is byte-for-byte
+    // identical to upstream whenever the member is cached. The payload-built
+    // instance is only a fallback for when it is not.
+    return this.guild?.members.resolve(this.author) ?? this._member ?? null;
   }
 
   /**
